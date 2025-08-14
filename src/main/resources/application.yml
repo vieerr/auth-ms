@@ -1,0 +1,5 @@
+spring:
+  security:
+    oauth2:
+      authorization-server:
+        issuer-url: http://localhost:9000

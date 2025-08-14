@@ -13,6 +13,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
@@ -22,15 +23,21 @@ import org.springframework.security.oauth2.server.authorization.settings.Authori
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import com.example.oauth_server.oauth_server.repository.ApiRegisteredClientRepository;
+import com.example.oauth_server.oauth_server.utils.JwtUtil;
 import com.example.services.ApiUserDetailsService;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
+
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 @Configuration
 @EnableWebSecurity
@@ -73,12 +80,40 @@ public class SecurityConfig {
                 .anyRequest().authenticated()
                 )
                 .formLogin(form -> form
-                .successHandler((request, response, authentication) -> {
-                    // Redirect to Angular app after login
-                    response.sendRedirect("http://localhost:4200");
+                .successHandler((HttpServletRequest request, HttpServletResponse response, Authentication authentication) -> {
+                    RestTemplate restTemplate = restTemplate();
+                    String email = authentication.getName();
+                    String apiUrl = "http://localhost:1313/api/clients/email/" + email;
+                    try {
+                        Object userResponse = restTemplate.getForObject(apiUrl, Object.class);
+                        if (userResponse == null) {
+                            System.err.println("User not found for email: " + email);
+                            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "User not found");
+                            return;
+                        }
+                        String jwt = JwtUtil.generateToken(
+                                userResponse.toString()
+                        );
+
+                        // // Logging (optional)
+                        // System.out.println("Generated JWT: " + jwt);
+                        // // Send JWT to Angular via:
+                        // // Option A: URL Fragment (for redirect)
+                        // response.sendRedirect("http://localhost:4200/login-success#token=" + jwt);
+                        Cookie cookie = new Cookie("the-armory-jwt", jwt);
+                        cookie.setHttpOnly(true);
+                        cookie.setSecure(true); // Enable in production
+                        cookie.setPath("/");
+                        response.addCookie(cookie);
+                        response.sendRedirect("http://localhost:4200");
+
+                    } catch (RestClientException e) {
+                        System.err.println("Failed to fetch user from API: " + e.getMessage());
+                    }
+
                 })
                 )
-                .csrf(csrf -> csrf.disable()); // Disable CSRF for API/OAuth2 (enable if needed for forms)
+                .csrf(csrf -> csrf.disable());
 
         return http.build();
     }

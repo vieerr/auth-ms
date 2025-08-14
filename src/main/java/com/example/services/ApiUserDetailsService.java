@@ -28,6 +28,8 @@ public class ApiUserDetailsService implements UserDetailsService {
             throw new UsernameNotFoundException("User not found");
         }
 
+        System.out.println("Client found: " + client.toString());
+
         String password = "{noop}" + client.getPassword();
         return User.builder()
                 .username(client.getEmail())
