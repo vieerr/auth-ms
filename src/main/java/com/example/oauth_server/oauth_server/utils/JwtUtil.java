@@ -1,24 +1,48 @@
 package com.example.oauth_server.oauth_server.utils;
 
 import java.security.Key;
+import java.util.Base64;
 import java.util.Date;
 
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
-import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
 
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
+
+@Component
 public class JwtUtil {
 
-    private static final Key SECRET_KEY = Keys.secretKeyFor(SignatureAlgorithm.HS256);
-    private static final long EXPIRATION_TIME = 864_000_000; // 10 days
+    @Value("${super-secret-key}")
+    private String secret; // Spring will inject this
 
-    public static String generateToken(String userInfo) {
+    private Key secretKey;
+    private final long EXPIRATION_TIME = 864_000_000; // 10 days
+
+    @PostConstruct
+    public void init() {
+        // Decode Base64 secret and generate Key
+        byte[] keyBytes = Base64.getDecoder().decode(secret);
+        this.secretKey = Keys.hmacShaKeyFor(keyBytes);
+    }
+
+    public String generateToken(String userInfo) {
         return Jwts.builder()
-            // .setSubject(userInfo)
                 .claim("userInfo", userInfo)
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION_TIME))
-                .signWith(SECRET_KEY)
+                .signWith(secretKey)
                 .compact();
+    }
+
+    // Optional helper to extract claims or user info
+    public String getUserInfoFromToken(String token) {
+        return Jwts.parserBuilder()
+                .setSigningKey(secretKey)
+                .build()
+                .parseClaimsJws(token)
+                .getBody()
+                .get("userInfo", String.class);
     }
 }
